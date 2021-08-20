@@ -2,6 +2,8 @@ import sys
 import os
 import time
 import datetime
+import helpers
+
 '''
 Script to monitor and create logs from
     - Environment variables,
@@ -23,6 +25,8 @@ def load_init_proc(startTime):
 
     @rtype str : log file action string in the format <timestamp> : <message>
     """
+
+    #TODO: separate time running from value into (value, time)
     if sys.platform == "darwin":
         cmd = "ps -ae"
         proc_find_process = os.popen(cmd)
@@ -94,6 +98,9 @@ def update_proc():
                 if key in PROC_CACHE:
                     if val != PROC_CACHE[key]:
                         proc_up.append((key, val))
+                        
+                        helpers.debugStringDiff(val, PROC_CACHE[key]) #comment/uncomment to debug string differences
+                        
                         PROC_CACHE[key] = val
                 else:
                     PROC_CACHE[key] = val
@@ -112,12 +119,7 @@ def update_proc():
             PROC_CACHE.pop(k)
         
         return proc_rm, proc_cr, proc_up
-        
-        
-                    
-
-        
-        
+         
 
     elif sys.platform == "linux" or sys.platform == "linux2":
         pass
@@ -154,11 +156,13 @@ if __name__ == "__main__":
     f.write(log_load_action)
     for (k,v) in PROC_CACHE.items():
         f.write("\t" + k + " : " + v + "\n")
-
+    
     while(True):
-
-        proc_rm, proc_cr, proc_up = update_proc()
+        cur = time.time()
         curTime = str(time.time() - start)
+        proc_rm, proc_cr, proc_up = update_proc()
+        
+        
         for p in proc_rm:
             f.write(curTime + " rm " + p[0] + " : " + p[1] + "\n")
         
@@ -167,6 +171,7 @@ if __name__ == "__main__":
 
         for p in proc_up:
             f.write(curTime + " up " + p[0] + " : " + p[1] + "\n")
+        print("Took {} ms".format(str(time.time() - cur)))
         
         time.sleep(60)
 
