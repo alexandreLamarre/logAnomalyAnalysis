@@ -16,6 +16,8 @@ Script to monitor and create logs from
 PATH_TO_DOCKER_VOLUME = ""
 
 PROC_CACHE = {}
+ENV_CACHE = {}
+MEMINFO_CACHE = {}
 LOG_FILE = "./log_" + str(time.time())
 
 
@@ -23,11 +25,13 @@ def load_init_proc(startTime):
     """
     Load initially running processes into global dict PROC_CACHE
 
+    @type float startTime: the epoch start time of the snapshot script
+
     @rtype str : log file action string in the format <timestamp> : <message>
     """
 
     #TODO: separate time running from value into (value, time)
-    if sys.platform == "darwin":
+    if sys.platform == "darwin": # Mac OSX
         cmd = "ps -ae"
         proc_find_process = os.popen(cmd)
         read_proc_find = proc_find_process.read()
@@ -49,11 +53,34 @@ def load_init_proc(startTime):
         pass
 
 
-def load_init_env_var():
+def load_init_env_var(startTime):
     """
     Load initially set environment variables int a dict
+
+    @type float startTime : epoch start time of the snapshot script
+
+    @rtype str : log file action string in the format <timestamp> : <message>
     """
-    pass
+    if sys.platform == "darwin": # Mac OSX
+        cmd = "printenv"
+        env_find_process = os.popen(cmd)
+        read_env_find = env_find_process.read()
+        curTime = time.time()
+        env_find_process.close()
+
+        env_list = str(read_env_find).strip().split("\n")
+
+        for i in range(len(env_list)):
+            env_list[i] = env_list[i].split("=", 1)
+            ENV_CACHE[env_list[i][0]] = env_list[i][1]
+        
+        return str(curTime - startTime) + "Initially loaded environment variables\n"
+        
+
+
+    elif sys.platform == "linux" or sys.platform == "linux2":
+        pass
+
 
 def load_init_mem():
     """
@@ -71,7 +98,7 @@ def update_proc():
 
     @rtype List[tuple], List[tuple], List[tuple] : list of removed processes, list of new processes, list of updated processes
     """
-    if sys.platform == "darwin":
+    if sys.platform == "darwin": # Mac OSX
         cmd = "ps -ae"
         proc_find_process = os.popen(cmd)
         read_proc_find = proc_find_process.read()
@@ -132,7 +159,52 @@ def update_env_var():
     - 'env_rm' : removed a process
     - 'env_cr' : created a new environment variable
     - 'env_up' : updated the value of an environment variable
+
+
+    @rtype List[tuple], List[tuple], List[tuple] : list of removed env vars, list of new env vars, list of updated env vars
     """
+    if sys.platform == "darwin": # Mac OSX
+        cmd = "printenv"
+        env_find_process = os.popen(cmd)
+        read_env_find = env_find_process.read()
+        env_find_process.close()
+
+        env_list = str(read_env_find).strip().split("\n")
+
+        temp_dict = dict()
+
+        env_rm = []
+        env_cr = []
+        env_up = []
+
+        for i in range(len(env_list)):
+            env_list[i] = env_list[i].split("=", 1)
+            
+            if env_list[i][0] in ENV_CACHE.keys():
+                if env_list[i][1] != ENV_CACHE[env_list[i][0]]:
+                    env_up.append((env_list[i][0], env_list[i][1]))
+            else:
+                env_cr.append((env_list[i][0], env_list[i][1]))
+
+            temp_dict[env_list[i][0]] = env_list[i][1]
+        
+        to_remove = []
+
+        for (k,v) in ENV_CACHE.items():
+            if k not in temp_dict.keys():
+                env_rm.append((k,v))
+                to_remove.append(k)
+        
+        for k in to_remove:
+            ENV_CACHE.pop(k)
+        
+        return env_rm, env_cr, env_up
+            
+
+
+    elif sys.platform == "linux" or sys.platform == "linux2":
+        pass
+
 
 def update_mem():
     """
@@ -157,22 +229,39 @@ if __name__ == "__main__":
     for (k,v) in PROC_CACHE.items():
         f.write("\t" + k + " : " + v + "\n")
     
+    log_load_action = load_init_env_var(start)
+
+    f.write(log_load_action)
+    for (k,v) in ENV_CACHE.items():
+        f.write("\t" + k + " : " + v + "\n")
+    
     while(True):
         cur = time.time()
         curTime = str(time.time() - start)
         proc_rm, proc_cr, proc_up = update_proc()
         
-        
         for p in proc_rm:
-            f.write(curTime + " rm " + p[0] + " : " + p[1] + "\n")
+            f.write(curTime + " proc_rm " + p[0] + " : " + p[1] + "\n")
         
         for p in proc_cr:
-            f.write(curTime + " cr " + p[0] + " : " + p[1] + "\n")
+            f.write(curTime + " proc_cr " + p[0] + " : " + p[1] + "\n")
 
         for p in proc_up:
-            f.write(curTime + " up " + p[0] + " : " + p[1] + "\n")
-        print("Took {} ms".format(str(time.time() - cur)))
+            f.write(curTime + " proc_up " + p[0] + " : " + p[1] + "\n")
         
+
+        env_rm, env_cr, env_up = update_env_var()
+
+        for e in env_rm:
+            f.write(curTime + " env_rm " + p[0] + "=" + p[1] + "\n")
+        
+        for e in env_cr:
+            f.write(curTime + " env_cr " + p[0] + "=" + p[1] + "\n")
+
+        for e in env_up:
+            f.write(curTime + " env_up" + p[0] + "=" + p[1] + "\n")
+
+        print("Took {} ms".format(str(time.time() - cur)))
         time.sleep(60)
 
 
